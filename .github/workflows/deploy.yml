@@ -1,0 +1,59 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [ main ]   # deploy when main branch changes
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup SSH key
+      uses: webfactory/ssh-agent@v0.8.1
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+    - name: Add EC2 host to known_hosts
+      run: |
+        mkdir -p ~/.ssh
+        ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+    - name: Copy project files to EC2 (rsync)
+      run: |
+        rsync -avz --delete \
+        --exclude ".github" \
+        --exclude ".git" \
+        ./ \
+        ubuntu@${{ secrets.EC2_HOST }}:/opt/weather_agent/
+
+    - name: Run remote deploy script
+      run: |
+        ssh ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+        
+        cd /opt/weather_agent
+        
+        echo "Writing .env file..."
+        cat > .env << EENV
+${{ secrets.ENV_CONTENT }}
+EENV
+
+        echo "Creating venv if missing..."
+        if [ ! -d ".venv" ]; then
+            python3 -m venv .venv
+        fi
+
+        echo "Installing requirements..."
+        source .venv/bin/activate
+        pip install -r requirements.txt
+        
+        echo "Restarting systemd service..."
+        sudo systemctl daemon-reload
+        sudo systemctl restart weather-assistant.service
+        
+        echo "Deployment completed!"
+        EOF
+
