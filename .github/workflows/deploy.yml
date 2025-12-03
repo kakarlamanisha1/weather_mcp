@@ -2,14 +2,14 @@ name: Deploy to EC2
 
 on:
   push:
-    branches: [ main ]   # deploy when main branch changes
+    branches: [ main ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
+    - name: Checkout code
       uses: actions/checkout@v4
 
     - name: Setup SSH key
@@ -22,38 +22,33 @@ jobs:
         mkdir -p ~/.ssh
         ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-    - name: Copy project files to EC2 (rsync)
+    - name: Rsync project files to EC2
       run: |
-        rsync -avz --delete \
-        --exclude ".github" \
-        --exclude ".git" \
-        ./ \
-        ubuntu@${{ secrets.EC2_HOST }}:/opt/weather_agent/
+        rsync -avz --delete --exclude '.git' --exclude '.github' ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ secrets.REMOTE_APP_DIR }}
+      env:
+        RSYNC_RSH: 'ssh -o StrictHostKeyChecking=no'
 
-    - name: Run remote deploy script
+    - name: Deploy on EC2
       run: |
-        ssh ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
-        
-        cd /opt/weather_agent
-        
-        echo "Writing .env file..."
-        cat > .env << EENV
-${{ secrets.ENV_CONTENT }}
-EENV
+        ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} 'bash -s' << 'EOF'
+        set -e
+        cd ${{ secrets.REMOTE_APP_DIR }}
 
-        echo "Creating venv if missing..."
+        # Create virtualenv if not exists
         if [ ! -d ".venv" ]; then
             python3 -m venv .venv
         fi
 
-        echo "Installing requirements..."
+        # Install requirements
         source .venv/bin/activate
+        pip install --upgrade pip
         pip install -r requirements.txt
-        
-        echo "Restarting systemd service..."
+
+        # Write environment variables
+        echo "${{ secrets.ENV_CONTENT }}" > .env
+
+        # Restart systemd service
         sudo systemctl daemon-reload
         sudo systemctl restart weather-assistant.service
-        
-        echo "Deployment completed!"
-        EOF
 
+        EOF
