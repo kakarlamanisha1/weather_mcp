@@ -17,7 +17,7 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 st.set_page_config(page_title="Weather Agent (MCP + LLM)", page_icon="🤖")
-st.title("🤖 Weather Agent")
+st.title("🤖 Weather Agent updated")
 
 if not OPENROUTER_API_KEY:
     st.error("OPENROUTER_API_KEY not found in .env")
@@ -158,3 +158,4 @@ for msg in st.session_state.messages:
 if prompt := st.chat_input("Ask about the weather..."):
     asyncio.run(run_agent_turn(prompt))
     st.rerun()
+
